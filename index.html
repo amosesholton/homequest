@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HomeQuest — Level Up Your Home</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- XP float container -->
+  <div id="xpFloats"></div>
+
+  <!-- ── HEADER ── -->
+  <header class="header">
+    <div class="container">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-icon">🏡</div>
+          <div>
+            <div class="brand-name">HomeQuest</div>
+            <div class="brand-sub">Level up your home</div>
+          </div>
+        </div>
+
+        <div class="player-info">
+          <div class="level-badge">
+            <span class="level-lv">LV</span>
+            <span class="level-num" id="playerLevel">1</span>
+          </div>
+          <div class="player-xp">
+            <div class="player-title-text" id="playerTitle">Rookie Tidier</div>
+            <div class="xp-bar-wrap">
+              <div class="xp-bar">
+                <div class="xp-fill" id="xpFill" style="width:0%"></div>
+              </div>
+              <div class="xp-nums" id="xpNums">0 / 150 XP</div>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-new-quest" id="btnNewQuest">＋ New Quest</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── STATS STRIP ── -->
+  <div class="stats-strip">
+    <div class="container">
+      <div class="stats-inner">
+        <div class="stat-pill">
+          <span class="stat-emoji">⚡</span>
+          <span class="stat-val" id="statXP">0</span>
+          <span class="stat-lbl">Total XP</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-emoji">✅</span>
+          <span class="stat-val" id="statTasks">0</span>
+          <span class="stat-lbl">Tasks Done</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-emoji">🏆</span>
+          <span class="stat-val" id="statQuests">0</span>
+          <span class="stat-lbl">Quests Won</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-emoji">🔥</span>
+          <span class="stat-val" id="statStreak">0</span>
+          <span class="stat-lbl">Day Streak</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <main class="main">
+    <div class="container">
+      <div class="quests-grid" id="questsGrid"></div>
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🌟</div>
+        <h2>Your quest log is empty!</h2>
+        <p>Create your first quest and start leveling up your home.</p>
+        <button class="btn-primary" onclick="openNewQuestModal()">Create First Quest</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── TASK MODAL ── -->
+  <div class="overlay" id="taskOverlay">
+    <div class="modal" id="taskModal" role="dialog" aria-modal="true">
+      <div class="modal-hero" id="modalHero">
+        <button class="modal-close" onclick="closeTaskModal()" aria-label="Close">✕</button>
+        <div class="modal-hero-content">
+          <div class="modal-hero-icon" id="modalHeroIcon"></div>
+          <div>
+            <div class="modal-hero-title" id="modalHeroTitle"></div>
+            <div class="modal-hero-desc" id="modalHeroDesc"></div>
+          </div>
+        </div>
+        <div class="modal-progress-wrap">
+          <div class="modal-progress-track">
+            <div class="modal-progress-fill" id="modalProgressFill"></div>
+          </div>
+          <div class="modal-progress-stats">
+            <span id="modalTaskCount">0 of 0 tasks</span>
+            <span id="modalXPEarned">+0 XP earned</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div class="task-list" id="taskList"></div>
+
+        <div class="add-task-section">
+          <button class="btn-add-task" id="btnAddTask" onclick="toggleAddTaskForm()">
+            <span class="plus-icon">+</span> Add a Task
+          </button>
+          <div class="add-task-form" id="addTaskForm">
+            <input type="text" id="newTaskInput" class="task-text-input"
+                   placeholder="What needs to be done?" maxlength="80">
+            <div class="task-form-actions">
+              <select id="newTaskXP" class="xp-select">
+                <option value="5">5 XP — Quick</option>
+                <option value="10" selected>10 XP — Easy</option>
+                <option value="15">15 XP — Normal</option>
+                <option value="20">20 XP — Medium</option>
+                <option value="25">25 XP — Hard</option>
+                <option value="30">30 XP — Epic</option>
+              </select>
+              <button class="btn-confirm" onclick="confirmAddTask()">Add</button>
+              <button class="btn-dismiss" onclick="cancelAddTask()">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── NEW QUEST MODAL ── -->
+  <div class="overlay" id="newQuestOverlay">
+    <div class="modal modal-sm" id="newQuestModal" role="dialog" aria-modal="true">
+      <div class="modal-header-plain">
+        <h2>✨ New Quest</h2>
+        <button class="modal-close-plain" onclick="closeNewQuestModal()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-form">
+        <div class="form-group">
+          <label class="form-label" for="newQuestName">Quest Name *</label>
+          <input type="text" id="newQuestName" class="form-input"
+                 placeholder="e.g., Deep Clean the Bedroom" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="newQuestDesc">Description</label>
+          <input type="text" id="newQuestDesc" class="form-input"
+                 placeholder="What will you accomplish?" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Icon</label>
+          <div class="icon-grid" id="iconGrid">
+            <button class="icon-btn selected" data-icon="🏠">🏠</button>
+            <button class="icon-btn" data-icon="🍳">🍳</button>
+            <button class="icon-btn" data-icon="🛋️">🛋️</button>
+            <button class="icon-btn" data-icon="🛏️">🛏️</button>
+            <button class="icon-btn" data-icon="🚿">🚿</button>
+            <button class="icon-btn" data-icon="🧹">🧹</button>
+            <button class="icon-btn" data-icon="🪴">🪴</button>
+            <button class="icon-btn" data-icon="📦">📦</button>
+            <button class="icon-btn" data-icon="🔧">🔧</button>
+            <button class="icon-btn" data-icon="🪟">🪟</button>
+            <button class="icon-btn" data-icon="🎨">🎨</button>
+            <button class="icon-btn" data-icon="🌿">🌿</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Theme Color</label>
+          <div class="color-grid" id="colorGrid">
+            <button class="color-btn selected" data-color="#FF6B35" style="--c:#FF6B35" aria-label="Orange"></button>
+            <button class="color-btn" data-color="#9B5DE5" style="--c:#9B5DE5" aria-label="Purple"></button>
+            <button class="color-btn" data-color="#00BBF9" style="--c:#00BBF9" aria-label="Blue"></button>
+            <button class="color-btn" data-color="#F15BB5" style="--c:#F15BB5" aria-label="Pink"></button>
+            <button class="color-btn" data-color="#52B788" style="--c:#52B788" aria-label="Green"></button>
+            <button class="color-btn" data-color="#FFB627" style="--c:#FFB627" aria-label="Gold"></button>
+            <button class="color-btn" data-color="#EF233C" style="--c:#EF233C" aria-label="Red"></button>
+            <button class="color-btn" data-color="#3D5A80" style="--c:#3D5A80" aria-label="Navy"></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-form-footer">
+        <button class="btn-ghost" onclick="closeNewQuestModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveNewQuest()">Create Quest →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LEVEL UP OVERLAY ── -->
+  <div class="level-up-overlay" id="levelUpOverlay">
+    <div class="level-up-card">
+      <div class="level-up-burst">🌟</div>
+      <div class="level-up-heading">LEVEL UP!</div>
+      <div class="level-up-num" id="levelUpNum">2</div>
+      <div class="level-up-title-text" id="levelUpTitleText">Apprentice Cleaner</div>
+      <button class="btn-primary btn-level-up" onclick="closeLevelUp()">Let's Go! 🎉</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
