@@ -123,12 +123,12 @@
                    placeholder="What needs to be done?" maxlength="80">
             <div class="task-form-actions">
               <select id="newTaskXP" class="xp-select">
-                <option value="5">5 XP — Quick</option>
-                <option value="10" selected>10 XP — Easy</option>
-                <option value="15">15 XP — Normal</option>
-                <option value="20">20 XP — Medium</option>
-                <option value="25">25 XP — Hard</option>
-                <option value="30">30 XP — Epic</option>
+                <option value="3-8">🎲 3–8 XP · Quick</option>
+                <option value="7-15" selected>🎲 7–15 XP · Easy</option>
+                <option value="10-22">🎲 10–22 XP · Normal</option>
+                <option value="15-28">🎲 15–28 XP · Medium</option>
+                <option value="18-35">🎲 18–35 XP · Hard</option>
+                <option value="22-42">🎲 22–42 XP · Epic</option>
               </select>
               <button class="btn-confirm" onclick="confirmAddTask()">Add</button>
               <button class="btn-dismiss" onclick="cancelAddTask()">Cancel</button>
@@ -204,6 +204,18 @@
       <div class="level-up-title-text" id="levelUpTitleText">Apprentice Cleaner</div>
       <button class="btn-primary btn-level-up" onclick="closeLevelUp()">Let's Go! 🎉</button>
     </div>
+  </div>
+
+  <!-- ── COMBO HUD (fixed bottom-right, slides up when a combo is active) ── -->
+  <div class="combo-hud" id="comboHUD">
+    <div class="combo-hud-fire" id="hudFire">🔥</div>
+    <div class="combo-hud-body">
+      <div class="combo-hud-count" id="hudCount">2 in a row!</div>
+      <div class="combo-hud-timer-track">
+        <div class="combo-hud-timer-fill" id="hudTimerFill"></div>
+      </div>
+    </div>
+    <div class="combo-hud-mult" id="hudMult">×1.25</div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>

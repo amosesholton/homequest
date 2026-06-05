@@ -653,7 +653,7 @@ body {
   color: #9A9ABF;
 }
 
-.task-xp-badge {
+.xp-badge {
   font-size: 0.67rem;
   font-weight: 900;
   padding: 3px 8px;
@@ -1089,6 +1089,169 @@ body {
 @keyframes toastIn {
   from { transform: translateX(-50%) translateY(50px); opacity: 0; }
   to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+
+/* ================================
+   COMBO HUD
+   ================================ */
+.combo-hud {
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 10px 14px 10px 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.16);
+  border: 2px solid var(--cc, #52B788);
+  /* start off-screen */
+  transform: translateY(90px) scale(0.85);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .45s cubic-bezier(0.34,1.56,0.64,1),
+              opacity .3s ease,
+              border-color .3s ease;
+}
+
+.combo-hud.active {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.combo-hud-fire {
+  font-size: 1.6rem;
+  line-height: 1;
+  animation: fireWiggle .35s ease-in-out infinite alternate;
+}
+
+@keyframes fireWiggle {
+  from { transform: rotate(-8deg) scale(1); }
+  to   { transform: rotate(8deg) scale(1.12); }
+}
+
+.combo-hud-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 90px;
+}
+
+.combo-hud-count {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #5A5A7A;
+  white-space: nowrap;
+}
+
+.combo-hud-timer-track {
+  height: 4px;
+  background: #F0F0F7;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.combo-hud-timer-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width .5s linear, background .3s;
+}
+
+.combo-hud-mult {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--cc, #52B788);
+  line-height: 1;
+  transition: color .3s;
+}
+
+/* ================================
+   XP BADGE — NEW STATES
+   ================================ */
+
+/* Mystery badge: shown before completion, displays the range */
+.xp-badge.mystery {
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.2px;
+  transition: background .3s, color .3s;
+  cursor: default;
+}
+
+/* Decay color classes applied on top of .mystery */
+.xp-badge.mystery.moderate { /* amber — see inline style in JS */ }
+.xp-badge.mystery.heavy    { /* red   — see inline style in JS */ }
+
+/* Decay percentage hint inside badge */
+.decay-pct {
+  font-size: 0.58rem;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* Rolling animation while XP is being "calculated" */
+.xp-badge.rolling {
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background: rgba(255,107,53,.1) !important;
+  color: #FF6B35 !important;
+  animation: badgeSpin .55s ease infinite;
+  filter: blur(1.5px);
+}
+
+@keyframes badgeSpin {
+  0%   { transform: scale(.85); opacity: .5; }
+  50%  { transform: scale(1.1); opacity: .9; }
+  100% { transform: scale(.85); opacity: .5; }
+}
+
+/* Awarded badge: shown after completion, displays actual XP won */
+.xp-badge.awarded {
+  font-size: 0.7rem;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+/* Pop animation on reveal */
+.reveal-pop {
+  animation: revealPop .5s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+@keyframes revealPop {
+  0%   { transform: scale(.2);  opacity: 0; filter: blur(6px); }
+  60%  { transform: scale(1.3); opacity: 1; filter: blur(0);   }
+  100% { transform: scale(1); }
+}
+
+/* Decay warning chip on quest cards */
+.decay-card-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(255,182,39,.14);
+  border: 1.5px solid rgba(204,136,0,.35);
+  color: #CC8800;
+  font-size: 0.58rem;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 99px;
+  letter-spacing: 0.4px;
+  pointer-events: none;
 }
 
 /* ================================
