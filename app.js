@@ -2,7 +2,9 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const STORAGE_KEY    = 'homequest_v1';
-const FRESHNESS_DAYS = 5; // completed tasks "expire" after this many days
+const FRESHNESS_DAYS = 5;
+const SWIPE_DIST     = 85;   // px threshold to trigger swipe
+const SWIPE_VEL      = 0.32; // px/ms velocity threshold
 
 const MOODS = [
   { min: 88, emoji: '🏡', label: 'Sparkling!',    barColor: '#52B788' },
@@ -38,6 +40,9 @@ let state = {
   quests: [],
 };
 
+// Swipe session state (not persisted)
+const swipe = { queue: [], index: 0 };
+
 let activeQuestId = null;
 let selectedIcon  = '🏠';
 let selectedColor = '#FF6B35';
@@ -67,8 +72,8 @@ function homeHealth() {
   return Math.round(state.quests.reduce((s, q) => s + questHealth(q), 0) / state.quests.length);
 }
 
-function getMood(h)      { return MOODS.find(m => h >= m.min)          ?? MOODS.at(-1); }
-function getRoomCond(h)  { return ROOM_CONDITIONS.find(c => h >= c.min) ?? ROOM_CONDITIONS.at(-1); }
+function getMood(h)     { return MOODS.find(m => h >= m.min)          ?? MOODS.at(-1); }
+function getRoomCond(h) { return ROOM_CONDITIONS.find(c => h >= c.min) ?? ROOM_CONDITIONS.at(-1); }
 
 function pickMsg(mood) {
   const pool = MESSAGES[mood.label] ?? MESSAGES['Cozy & Tidy'];
@@ -103,21 +108,18 @@ function loadState() {
 function migrateTasks() {
   for (const quest of state.quests) {
     for (const task of quest.tasks) {
-      if (!task.createdAt)  task.createdAt = Date.now();
+      if (!task.createdAt) task.createdAt = Date.now();
       if (task.completed && !task.completedAt) task.completedAt = Date.now() - 43_200_000;
-      // Strip old XP fields from previous version
       delete task.xp; delete task.xpMin; delete task.xpMax; delete task.xpAwarded;
     }
-    // Remove old 'completed' quest-level flag used by XP version
     delete quest.completed;
   }
-  // Strip XP player fields
   delete state.player.totalXP;
   delete state.player.tasksCompleted;
   delete state.player.questsCompleted;
   delete state.combo;
-  if (state.player.tasksToday  == null) state.player.tasksToday  = 0;
-  if (state.player.totalDone   == null) state.player.totalDone   = 0;
+  if (state.player.tasksToday == null) state.player.tasksToday = 0;
+  if (state.player.totalDone  == null) state.player.totalDone  = 0;
 }
 
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -187,7 +189,7 @@ function defaultQuests() {
   ];
 }
 
-// ─── Render: pet ──────────────────────────────────────────────────────────────
+// ─── Pet ──────────────────────────────────────────────────────────────────────
 function renderPet() {
   const health  = homeHealth();
   const mood    = getMood(health);
@@ -199,29 +201,23 @@ function renderPet() {
   document.getElementById('petHealthFill').style.background = mood.barColor;
   document.getElementById('petHealthPct').textContent  = health + '%';
 
-  // Refresh message only on mood change
   if (section.dataset.mood !== mood.label) {
     document.getElementById('petMessage').textContent = pickMsg(mood);
     section.dataset.mood = mood.label;
   }
 
-  // Crisis shake
   if (mood.label === 'In Crisis!') {
     const el = document.getElementById('petHouse');
-    el.classList.remove('shake');
-    void el.offsetWidth;
-    el.classList.add('shake');
+    el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
   }
 }
 
 function bouncePet() {
   const el = document.getElementById('petHouse');
-  el.classList.remove('bounce');
-  void el.offsetWidth;
-  el.classList.add('bounce');
+  el.classList.remove('bounce'); void el.offsetWidth; el.classList.add('bounce');
 }
 
-// ─── Render: stats ────────────────────────────────────────────────────────────
+// ─── Stats & Grid ─────────────────────────────────────────────────────────────
 function renderStats() {
   const sparkling = state.quests.filter(q => questHealth(q) >= 85).length;
   document.getElementById('statToday').textContent     = state.player.tasksToday ?? 0;
@@ -229,11 +225,9 @@ function renderStats() {
   document.getElementById('statSparkling').textContent = sparkling;
 }
 
-// ─── Render: quest grid ───────────────────────────────────────────────────────
 function renderGrid() {
   const grid  = document.getElementById('questsGrid');
   const empty = document.getElementById('emptyState');
-
   if (!state.quests.length) {
     grid.style.display = 'none';
     empty.classList.add('visible');
@@ -271,7 +265,9 @@ function questCardHtml(quest) {
         </div>
         <div class="quest-progress-labels">
           <span>${fresh} / ${total} tasks fresh</span>
-          ${stale > 0 ? `<span class="stale-count">↻ ${stale} need${stale > 1 ? '' : 's'} redo</span>` : `<span>${health}% healthy</span>`}
+          ${stale > 0
+            ? `<span class="stale-count">↻ ${stale} need${stale > 1 ? '' : 's'} redo</span>`
+            : `<span>${health}% healthy</span>`}
         </div>
         <button class="quest-cta" style="background:${quest.color}">
           Care for this room →
@@ -280,7 +276,7 @@ function questCardHtml(quest) {
     </div>`;
 }
 
-// ─── Task modal ───────────────────────────────────────────────────────────────
+// ─── Task Modal ───────────────────────────────────────────────────────────────
 function openTaskModal(questId) {
   activeQuestId = questId;
   const quest = state.quests.find(q => q.id === questId);
@@ -292,8 +288,9 @@ function openTaskModal(questId) {
   document.getElementById('modalHeroTitle').textContent = quest.title;
   document.getElementById('modalHeroDesc').textContent  = quest.description || '';
 
+  buildSwipeQueue(quest);
   refreshProgress(quest);
-  renderTaskList(quest);
+  renderCardStack(quest);
   cancelAddTask();
 
   document.getElementById('taskOverlay').classList.add('open');
@@ -317,97 +314,234 @@ function refreshProgress(quest) {
   document.getElementById('modalXPEarned').textContent     = cond.label;
 }
 
-function renderTaskList(quest) {
-  const list = document.getElementById('taskList');
-  if (!quest.tasks.length) {
-    list.innerHTML = `<div style="text-align:center;color:#9A9ABF;padding:20px 0;font-weight:600">
-      No tasks yet — add one below! 👇</div>`;
+// ─── Swipe queue ──────────────────────────────────────────────────────────────
+function buildSwipeQueue(quest) {
+  // Stale (need redo) first, then uncompleted
+  swipe.queue = [
+    ...quest.tasks.filter(t => t.completed && !isTaskFresh(t)),
+    ...quest.tasks.filter(t => !t.completed),
+  ].map(t => t.id);
+  swipe.index = 0;
+}
+
+// ─── Card stack rendering ─────────────────────────────────────────────────────
+function renderCardStack(quest) {
+  const stack   = document.getElementById('cardStack');
+  const empty   = document.getElementById('stackEmpty');
+  const actions = document.getElementById('swipeActions');
+  const counter = document.getElementById('swipeCounter');
+
+  const remaining = swipe.queue.slice(swipe.index);
+  const fresh     = quest.tasks.filter(isTaskFresh).length;
+
+  counter.textContent = `${fresh} of ${quest.tasks.length} cared for`;
+
+  if (remaining.length === 0) {
+    stack.innerHTML = '';
+    empty.style.display  = 'flex';
+    empty.innerHTML = quest.tasks.length === 0
+      ? '<div class="stack-empty-icon">✏️</div><div class="stack-empty-text">Add tasks below!</div>'
+      : '<div class="stack-empty-icon">✨</div><div class="stack-empty-text">All done! Your home thanks you 💖</div>';
+    actions.style.visibility = 'hidden';
+    renderDonePills(quest);
     return;
   }
-  list.innerHTML = quest.tasks.map((t, i) => taskItemHtml(t, i, quest.color)).join('');
+
+  empty.style.display     = 'none';
+  actions.style.visibility = 'visible';
+  stack.innerHTML = '';
+
+  // Render back-to-front so z-index stacks correctly (pos-2 first, pos-0 last)
+  const visible = remaining.slice(0, 3);
+  [...visible].reverse().forEach((taskId, ri) => {
+    const pos  = visible.length - 1 - ri;
+    const task = quest.tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const card = createTaskCard(task, pos);
+    stack.appendChild(card);
+    if (pos === 0) attachDragHandlers(card, quest);
+  });
+
+  renderDonePills(quest);
 }
 
-function taskItemHtml(task, i, questColor) {
-  const fresh = isTaskFresh(task);
-  const stale = task.completed && !fresh;
-
-  let cls          = '';
-  let checkStyle   = '';
-  let checkContent = '';
-  let badge        = '';
-
-  if (fresh) {
-    cls          = 'checked';
-    checkContent = '✓';
-    checkStyle   = `background:${questColor};border-color:${questColor}`;
-  } else if (stale) {
-    cls          = 'stale';
-    checkContent = '↻';
-    checkStyle   = 'border-color:#CC8800;color:#CC8800;background:rgba(204,136,0,.1)';
-    badge        = '<div class="stale-badge">↻ Needs care</div>';
-  }
-
-  return `
-    <div class="task-item ${cls}" id="task_${task.id}"
-         style="animation-delay:${i * 35}ms"
-         onclick="toggleTask('${task.id}')">
-      <div class="task-checkbox" style="${checkStyle}">${checkContent}</div>
-      <div class="task-text">${escHtml(task.text)}</div>
-      ${badge}
+function createTaskCard(task, pos) {
+  const stale = task.completed && !isTaskFresh(task);
+  const card  = document.createElement('div');
+  card.className      = `swipe-card pos-${pos}`;
+  card.dataset.taskId = task.id;
+  card.innerHTML = `
+    <div class="card-ind care-ind">💚 Care!</div>
+    <div class="card-ind skip-ind">⏭ Skip</div>
+    <div class="card-main">
+      <div class="card-task-text">${escHtml(task.text)}</div>
+      ${stale ? '<div class="card-redo-pill">↻ Needs refreshing</div>' : ''}
     </div>`;
+  return card;
 }
 
-// ─── Core: toggle task ────────────────────────────────────────────────────────
-function toggleTask(taskId) {
-  const quest = state.quests.find(q => q.id === activeQuestId);
-  const task  = quest?.tasks.find(t => t.id === taskId);
-  if (!task) return;
+// ─── Drag / swipe mechanics ───────────────────────────────────────────────────
+function attachDragHandlers(card, quest) {
+  let startX = 0, startY = 0, startTime = 0;
+  let active = false, dirLocked = false, isHoriz = false;
 
-  const wasFresh = isTaskFresh(task);
+  card.addEventListener('pointerdown', e => {
+    startX = e.clientX; startY = e.clientY; startTime = Date.now();
+    active = true; dirLocked = false; isHoriz = false;
+    card.style.transition = '';
+  });
 
-  if (!task.completed || !wasFresh) {
-    // Care / re-fresh
+  card.addEventListener('pointermove', e => {
+    if (!active) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!dirLocked && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      isHoriz   = Math.abs(dx) >= Math.abs(dy);
+      dirLocked = true;
+      if (isHoriz) card.setPointerCapture(e.pointerId);
+    }
+    if (!dirLocked || !isHoriz) return;
+
+    const rot = dx * 0.065;
+    card.style.transition = 'box-shadow 0.1s';
+    card.style.transform  = `translateX(${dx}px) rotate(${rot}deg)`;
+    card.style.boxShadow  = `0 ${10 + Math.abs(dx) * 0.06}px ${30 + Math.abs(dx) * 0.2}px rgba(0,0,0,${0.1 + Math.abs(dx) * 0.0008})`;
+
+    const careInd = card.querySelector('.care-ind');
+    const skipInd = card.querySelector('.skip-ind');
+
+    if (dx > 0) {
+      const p = Math.min(1, dx / 70);
+      careInd.style.opacity  = p;
+      skipInd.style.opacity  = 0;
+      card.style.background  = `rgba(82,183,136,${p * 0.13})`;
+      card.style.borderColor = `rgba(82,183,136,${p * 0.55})`;
+    } else {
+      const p = Math.min(1, -dx / 70);
+      skipInd.style.opacity  = p;
+      careInd.style.opacity  = 0;
+      card.style.background  = `rgba(255,182,39,${p * 0.1})`;
+      card.style.borderColor = `rgba(255,182,39,${p * 0.5})`;
+    }
+  });
+
+  const onUp = e => {
+    if (!active) return;
+    active = false;
+    if (!dirLocked || !isHoriz) { card.style.cursor = 'grab'; return; }
+
+    const dx = e.clientX - startX;
+    const vx = dx / Math.max(1, Date.now() - startTime);
+
+    if      (dx >  SWIPE_DIST || vx >  SWIPE_VEL) flyCard(card, 'right', quest);
+    else if (dx < -SWIPE_DIST || vx < -SWIPE_VEL) flyCard(card, 'left',  quest);
+    else snapCard(card);
+  };
+
+  card.addEventListener('pointerup',     onUp);
+  card.addEventListener('pointercancel', () => { active = false; snapCard(card); });
+}
+
+function snapCard(card) {
+  card.style.transition  = 'transform 0.45s cubic-bezier(0.34,1.56,0.64,1), background 0.25s, border-color 0.25s, box-shadow 0.25s';
+  card.style.transform   = 'translateX(0) rotate(0deg)';
+  card.style.background  = '';
+  card.style.borderColor = '';
+  card.style.boxShadow   = '';
+  card.querySelector('.care-ind').style.opacity = 0;
+  card.querySelector('.skip-ind').style.opacity = 0;
+}
+
+function flyCard(card, direction, quest) {
+  const rect = card.getBoundingClientRect();
+  const tx   = direction === 'right' ? window.innerWidth * 1.5 : -window.innerWidth * 1.5;
+  const rot  = direction === 'right' ? 32 : -32;
+
+  card.style.transition    = 'transform 0.36s cubic-bezier(0.4,0,1,1), opacity 0.36s';
+  card.style.transform     = `translateX(${tx}px) rotate(${rot}deg)`;
+  card.style.opacity       = '0';
+  card.style.pointerEvents = 'none';
+
+  // Flash the zone background
+  flashZone(direction);
+
+  setTimeout(() => {
+    if (direction === 'right') completeCard(quest, rect);
+    else                       skipCard(quest);
+  }, 300);
+}
+
+function flashZone(direction) {
+  const zone = document.getElementById('cardStack');
+  const col  = direction === 'right' ? 'rgba(82,183,136,0.15)' : 'rgba(255,182,39,0.12)';
+  zone.style.transition = 'background 0.08s';
+  zone.style.background = col;
+  setTimeout(() => {
+    zone.style.transition = 'background 0.5s';
+    zone.style.background = '';
+  }, 120);
+}
+
+// ─── Complete / skip ──────────────────────────────────────────────────────────
+function completeCard(quest, cardRect) {
+  const taskId = swipe.queue[swipe.index];
+  const task   = quest.tasks.find(t => t.id === taskId);
+
+  if (task) {
     task.completed   = true;
     task.completedAt = Date.now();
     state.player.tasksToday = (state.player.tasksToday ?? 0) + 1;
     state.player.totalDone  = (state.player.totalDone  ?? 0) + 1;
     state.player.lastActiveDate = new Date().toDateString();
-
-    // Animate the item
-    const el  = document.getElementById('task_' + taskId);
-    const box = el?.querySelector('.task-checkbox');
-    if (el && box) {
-      el.classList.remove('stale');
-      el.classList.add('checked');
-      box.textContent  = '✓';
-      box.style.cssText = `background:${quest.color};border-color:${quest.color}`;
-      el.querySelector('.stale-badge')?.remove();
-      showCareFloat(el);
-    }
-
     bouncePet();
-
-    // All tasks fresh → sparkling!
+    showCareFloatAt(cardRect);
     if (quest.tasks.every(isTaskFresh)) {
-      setTimeout(() => questSparkling(quest), 350);
-    }
-
-  } else {
-    // Un-care
-    task.completed   = false;
-    task.completedAt = null;
-    state.player.tasksToday = Math.max(0, (state.player.tasksToday ?? 0) - 1);
-
-    const el  = document.getElementById('task_' + taskId);
-    const box = el?.querySelector('.task-checkbox');
-    if (el && box) {
-      el.classList.remove('checked');
-      box.textContent  = '';
-      box.style.cssText = '';
+      setTimeout(() => questSparkling(quest), 400);
     }
   }
+  swipe.index++;
+  saveState();
+  renderCardStack(quest);
+  refreshProgress(quest);
+  renderPet();
+  renderStats();
+  renderGrid();
+}
+
+function skipCard(quest) {
+  // Remove from queue; task stays incomplete, reappears next modal open
+  swipe.queue.splice(swipe.index, 1);
+  renderCardStack(quest);
+}
+
+// ─── Done pills (undo completed tasks) ────────────────────────────────────────
+function renderDonePills(quest) {
+  const el    = document.getElementById('donePills');
+  const fresh = quest.tasks.filter(isTaskFresh);
+  if (!fresh.length) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    `<span class="done-pills-label">Cared for:</span>` +
+    fresh.map(t => `
+      <button class="done-pill" onclick="uncareTask('${t.id}')">
+        ✓ ${escHtml(t.text)}
+      </button>`).join('');
+}
+
+function uncareTask(taskId) {
+  const quest = state.quests.find(q => q.id === activeQuestId);
+  const task  = quest?.tasks.find(t => t.id === taskId);
+  if (!task) return;
+
+  task.completed   = false;
+  task.completedAt = null;
+  state.player.tasksToday = Math.max(0, (state.player.tasksToday ?? 0) - 1);
+
+  // Put it back at the front of the remaining queue
+  swipe.queue.splice(swipe.index, 0, taskId);
 
   saveState();
+  renderCardStack(quest);
   refreshProgress(quest);
   renderPet();
   renderStats();
@@ -448,10 +582,12 @@ function confirmAddTask() {
   }
   const quest = state.quests.find(q => q.id === activeQuestId);
   if (!quest) return;
-  quest.tasks.push(makeTask(text));
+  const task = makeTask(text);
+  quest.tasks.push(task);
+  swipe.queue.splice(swipe.index, 0, task.id); // slot into front of remaining
   saveState();
   cancelAddTask();
-  renderTaskList(quest);
+  renderCardStack(quest);
   refreshProgress(quest);
   renderGrid();
 }
@@ -498,14 +634,12 @@ function saveNewQuest() {
 
 // ─── Celebrations ─────────────────────────────────────────────────────────────
 function questSparkling(quest) {
-  confetti({
-    particleCount: 90, spread: 70, origin: { y: 0.55 },
-    colors: [quest.color, '#52B788', '#FFB627', '#fff'],
-    shapes: ['star', 'circle'],
-  });
+  confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 },
+    colors: [quest.color, '#52B788', '#FFB627', '#fff'], shapes: ['star','circle'] });
   showToast(`✨ ${quest.title} is Sparkling!`, '#2D9C62');
   renderGrid();
-  refreshProgress(quest);
+  const q = state.quests.find(q => q.id === activeQuestId);
+  if (q) refreshProgress(q);
 }
 
 function showToast(msg, color) {
@@ -522,18 +656,18 @@ function showToast(msg, color) {
   }, 3200);
 }
 
-function showCareFloat(element) {
-  const rect = element.getBoundingClientRect();
-  for (let i = 0; i < 3; i++) {
+function showCareFloatAt(rect) {
+  if (!rect) return;
+  for (let i = 0; i < 4; i++) {
     setTimeout(() => {
       const el       = document.createElement('div');
       el.className   = 'care-float';
       el.textContent = CARE_EMOJIS[Math.floor(Math.random() * CARE_EMOJIS.length)];
-      el.style.left  = (rect.left + 16 + Math.random() * Math.max(0, rect.width - 32)) + 'px';
-      el.style.top   = rect.top + 'px';
+      el.style.left  = (rect.left + 12 + Math.random() * Math.max(0, rect.width - 24)) + 'px';
+      el.style.top   = (rect.top  + rect.height * 0.25) + 'px';
       document.getElementById('careFloats').appendChild(el);
-      setTimeout(() => el.remove(), 1050);
-    }, i * 110);
+      setTimeout(() => el.remove(), 1100);
+    }, i * 85);
   }
 }
 
@@ -551,6 +685,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('newQuestOverlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeNewQuestModal();
+  });
+
+  // Keyboard swipe shortcuts when modal is open
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('taskOverlay').classList.contains('open')) {
+      const quest = state.quests.find(q => q.id === activeQuestId);
+      if (quest && e.key === 'ArrowRight') {
+        const top = document.querySelector('.swipe-card.pos-0');
+        if (top) flyCard(top, 'right', quest);
+      }
+      if (quest && e.key === 'ArrowLeft') {
+        const top = document.querySelector('.swipe-card.pos-0');
+        if (top) flyCard(top, 'left', quest);
+      }
+      if (e.key === 'Escape') closeTaskModal();
+    }
+    if (document.getElementById('newQuestOverlay').classList.contains('open') && e.key === 'Escape') {
+      closeNewQuestModal();
+    }
   });
 
   document.getElementById('iconGrid').addEventListener('click', e => {
@@ -575,11 +728,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('newQuestName').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveNewQuest();
-  });
-
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    if (document.getElementById('taskOverlay').classList.contains('open'))     closeTaskModal();
-    if (document.getElementById('newQuestOverlay').classList.contains('open')) closeNewQuestModal();
   });
 });

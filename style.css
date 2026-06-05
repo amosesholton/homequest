@@ -481,108 +481,221 @@ body {
   color: rgba(255,255,255,.92);
 }
 
-/* Task list */
+/* ================================
+   SWIPE ZONE & CARD STACK
+   ================================ */
 .modal-body { padding: 14px 18px 20px; }
 
-.task-list {
-  display: flex;
+.swipe-zone {
+  position: relative;
+  height: 200px;
+  margin-bottom: 4px;
+}
+
+.card-stack {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  transition: background 0.5s;
+}
+
+/* Empty / all-done state */
+.stack-empty {
+  display: none;
+  position: absolute;
+  inset: 0;
   flex-direction: column;
-  gap: 7px;
-  margin-bottom: 14px;
-}
-
-.task-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 14px;
-  background: #F5F5F0;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s;
-  border: 1.5px solid transparent;
-  animation: taskSlideIn 0.28s cubic-bezier(0.34,1.56,0.64,1) both;
-}
-@keyframes taskSlideIn {
-  from { transform: translateX(-10px) scale(0.97); opacity: 0; }
-  to   { transform: translateX(0) scale(1);        opacity: 1; }
-}
-
-.task-item:hover {
-  background: #EBEBEB;
-  border-color: rgba(0,0,0,0.08);
-  transform: translateX(4px);
-}
-
-/* Fresh / completed */
-.task-item.checked {
-  background: #F0FAF5;
-  border-color: rgba(45,156,98,.2);
-}
-.task-item.checked:hover { background: #E6F5EE; transform: translateX(2px); }
-
-/* Stale — needs redo */
-.task-item.stale {
-  background: rgba(255,182,39,.07);
-  border-color: rgba(204,136,0,.16);
-}
-.task-item.stale:hover {
-  background: rgba(255,182,39,.14);
-  border-color: rgba(204,136,0,.3);
-  transform: translateX(4px);
-}
-.task-item.stale .task-text { color: #8A7A60; }
-
-.task-checkbox {
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  border: 2.5px solid #CCC;
-  flex-shrink: 0;
-  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.72rem;
+  gap: 10px;
+  border-radius: 18px;
+  background: rgba(82,183,136,.06);
+  border: 2px dashed rgba(82,183,136,.3);
+}
+.stack-empty-icon { font-size: 2.8rem; animation: emptyFloat 2.5s ease-in-out infinite; }
+.stack-empty-text {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #2D9C62;
+  text-align: center;
+  padding: 0 20px;
+}
+
+/* Individual swipe cards */
+.swipe-card {
+  position: absolute;
+  left: 0; right: 0;
+  height: 170px;
+  background: #fff;
+  border-radius: 18px;
+  border: 2px solid rgba(0,0,0,0.06);
+  padding: 20px 20px 16px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;        /* hand all touch to pointer events */
+  will-change: transform;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.09);
+  transition: transform 0.32s cubic-bezier(0.34,1.56,0.64,1),
+              box-shadow 0.2s;
+}
+.swipe-card:active { cursor: grabbing; }
+
+/* Stack depth positions */
+.swipe-card.pos-0 {
+  z-index: 3;
+  animation: cardRiseUp 0.35s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes cardRiseUp {
+  from { transform: scale(0.95) translateY(12px); opacity: 0.8; }
+  to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
+
+.swipe-card.pos-1 {
+  z-index: 2;
+  transform: scale(0.95) translateY(14px);
+  pointer-events: none;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.06);
+}
+
+.swipe-card.pos-2 {
+  z-index: 1;
+  transform: scale(0.9) translateY(26px);
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+/* Direction indicator chips (appear during drag) */
+.card-ind {
+  position: absolute;
+  top: 13px;
+  font-size: 0.7rem;
   font-weight: 900;
-  color: #fff;
-  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
-}
-
-.task-item.checked .task-checkbox {
-  animation: checkPop 0.45s cubic-bezier(0.34,1.56,0.64,1);
-}
-@keyframes checkPop {
-  0%  { transform: scale(1); }
-  40% { transform: scale(1.55); }
-  70% { transform: scale(0.88); }
-  100%{ transform: scale(1); }
-}
-
-.task-text {
-  flex: 1;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #1A1A2E;
-  transition: color 0.3s;
-  line-height: 1.4;
-  min-width: 0;
-}
-.task-item.checked .task-text {
-  text-decoration: line-through;
-  color: #9A9ABF;
-}
-
-/* Stale badge */
-.stale-badge {
-  font-size: 0.63rem;
-  font-weight: 900;
-  background: rgba(204,136,0,.12);
-  color: #CC8800;
-  border: 1.5px solid rgba(204,136,0,.25);
-  padding: 2px 8px;
+  padding: 4px 11px;
   border-radius: 99px;
-  white-space: nowrap;
-  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+  transition: opacity 0.08s;
+}
+.care-ind {
+  right: 13px;
+  background: rgba(82,183,136,.15);
+  color: #2D9C62;
+  border: 2px solid rgba(82,183,136,.4);
+  transform: rotate(10deg);
+}
+.skip-ind {
+  left: 13px;
+  background: rgba(255,182,39,.15);
+  color: #CC8800;
+  border: 2px solid rgba(255,182,39,.4);
+  transform: rotate(-10deg);
+}
+
+/* Card content */
+.card-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.card-task-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1A1A2E;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 280px;
+}
+
+.card-redo-pill {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #CC8800;
+  background: rgba(255,182,39,.12);
+  border: 1.5px solid rgba(204,136,0,.25);
+  padding: 3px 11px;
+  border-radius: 99px;
   letter-spacing: 0.2px;
+}
+
+/* ================================
+   SWIPE HINTS & COUNTER
+   ================================ */
+.swipe-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 4px 2px;
+  visibility: visible;
+}
+.action-skip {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #CC8800;
+  opacity: 0.75;
+}
+.action-care {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #2D9C62;
+  opacity: 0.75;
+}
+
+.swipe-counter {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9A9ABF;
+  padding: 0 0 10px;
+}
+
+/* ================================
+   DONE PILLS
+   ================================ */
+.done-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 10px;
+  min-height: 0;
+}
+
+.done-pills-label {
+  font-size: 0.62rem;
+  font-weight: 900;
+  color: #9A9ABF;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.done-pill {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #2D9C62;
+  background: rgba(82,183,136,.1);
+  border: 1.5px solid rgba(82,183,136,.25);
+  border-radius: 99px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.done-pill:hover {
+  background: rgba(239,35,60,.08);
+  border-color: rgba(239,35,60,.3);
+  color: #C0002A;
 }
 
 /* ================================

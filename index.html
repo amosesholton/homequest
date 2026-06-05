@@ -103,8 +103,26 @@
       </div>
 
       <div class="modal-body">
-        <div class="task-list" id="taskList"></div>
 
+        <!-- Swipe card stack -->
+        <div class="swipe-zone">
+          <div class="card-stack" id="cardStack"></div>
+          <div class="stack-empty" id="stackEmpty"></div>
+        </div>
+
+        <!-- Directional hints -->
+        <div class="swipe-actions" id="swipeActions">
+          <span class="action-skip">← skip for now</span>
+          <span class="action-care">care for it →</span>
+        </div>
+
+        <!-- Progress counter -->
+        <div class="swipe-counter" id="swipeCounter">0 of 0 cared for</div>
+
+        <!-- Completed pills (tap to undo) -->
+        <div class="done-pills" id="donePills"></div>
+
+        <!-- Add task -->
         <div class="add-task-section">
           <button class="btn-add-task" id="btnAddTask" onclick="toggleAddTaskForm()">
             <span class="plus-icon">+</span> Add a Task
