@@ -2,241 +2,79 @@
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const STORAGE_KEY    = 'homequest_v1';
-const COMBO_WINDOW   = 3 * 60 * 1000; // 3-minute combo window
-const DECAY_RATE     = 0.9;            // 10% XP lost per day
+const FRESHNESS_DAYS = 5; // completed tasks "expire" after this many days
 
-const LEVEL_TITLES = [
-  'Rookie Tidier',
-  'Apprentice Cleaner',
-  'Tidy Adventurer',
-  'Cleaning Warrior',
-  'Organized Champion',
-  'Master of Chores',
-  'Legendary Homekeeper',
-  'Grand Keeper of the Realm',
+const MOODS = [
+  { min: 88, emoji: '🏡', label: 'Sparkling!',    barColor: '#52B788' },
+  { min: 65, emoji: '🏡', label: 'Cozy & Tidy',   barColor: '#6BC28A' },
+  { min: 45, emoji: '🏠', label: 'Getting Dusty', barColor: '#FFB627' },
+  { min: 25, emoji: '🏠', label: 'Getting Messy', barColor: '#FF6B35' },
+  { min: 10, emoji: '🏚️', label: 'Needs Help!',  barColor: '#EF233C' },
+  { min:  0, emoji: '🏚️', label: 'In Crisis!',   barColor: '#EF233C' },
 ];
 
-// Combo multiplier tiers (highest first)
-const COMBO_TIERS = [
-  { min: 10, mult: 3.0,  label: '×3',    fire: '🔥🔥🔥', color: '#EF233C' },
-  { min: 7,  mult: 2.5,  label: '×2.5',  fire: '🔥🔥🔥', color: '#FF6B35' },
-  { min: 5,  mult: 2.0,  label: '×2',    fire: '🔥🔥',   color: '#FFB627' },
-  { min: 3,  mult: 1.5,  label: '×1.5',  fire: '🔥🔥',   color: '#9B5DE5' },
-  { min: 2,  mult: 1.25, label: '×1.25', fire: '🔥',     color: '#52B788' },
+const MESSAGES = {
+  'Sparkling!':    ["Your home loves you! 💖", "Everything is gleaming! ✨", "What a cozy haven! 🌟", "You're a home hero! 🦸"],
+  'Cozy & Tidy':   ["Nice and tidy! 💚", "Home sweet home! 🍃", "Feeling fresh in here 🌿", "Looking good!"],
+  'Getting Dusty': ["Could use a little love… 🧹", "Getting dusty in here 🌫️", "Your home needs some care!"],
+  'Getting Messy': ["Things are piling up… 📦", "Your home is getting stressed 😟", "Time to roll up your sleeves!"],
+  'Needs Help!':   ["Your home really needs you! 😰", "Please — things are falling apart! 🆘"],
+  'In Crisis!':    ["🚨 Clean something NOW!", "Your home is crying for help! 😱"],
+};
+
+const ROOM_CONDITIONS = [
+  { min: 85, label: '✨ Sparkling', color: '#2D9C62' },
+  { min: 65, label: '💚 Tidy',     color: '#2D9C62' },
+  { min: 40, label: '🌫️ Dusty',   color: '#CC8800' },
+  { min: 20, label: '🟠 Messy',    color: '#D4500A' },
+  { min:  0, label: '🔴 Neglected', color: '#C0002A' },
 ];
 
-// ─── Default quest data ────────────────────────────────────────────────────────
+const CARE_EMOJIS = ['💚', '✨', '💛', '🌿', '💖', '⭐', '🌱'];
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let state = {
+  player: { tasksToday: 0, streak: 0, lastActiveDate: null, totalDone: 0 },
+  quests: [],
+};
+
+let activeQuestId = null;
+let selectedIcon  = '🏠';
+let selectedColor = '#FF6B35';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function makeId(p) {
   return p + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
 
-/** xpMin/xpMax define the mystery reward range. createdAt drives decay. */
-function makeTask(text, xpMin, xpMax) {
-  return { id: makeId('t'), text, xpMin, xpMax, createdAt: Date.now(), completed: false, xpAwarded: null };
+function makeTask(text) {
+  return { id: makeId('t'), text, completed: false, completedAt: null, createdAt: Date.now() };
 }
 
-function defaultQuests() {
-  return [
-    {
-      id: makeId('q'), title: 'Kitchen Conquest', icon: '🍳',
-      color: '#FF6B35', description: 'Transform your kitchen into a sparkling sanctuary',
-      completed: false, tasks: [
-        makeTask('Wipe down counters & stovetop',    10, 22),
-        makeTask('Clean the microwave inside & out', 14, 28),
-        makeTask('Scrub the sink until it shines',    7, 15),
-        makeTask('Mop the kitchen floor',            18, 35),
-        makeTask('Organize the pantry shelves',      22, 42),
-        makeTask('Empty & clean the trash bin',       7, 15),
-      ],
-    },
-    {
-      id: makeId('q'), title: 'Living Room Legend', icon: '🛋️',
-      color: '#9B5DE5', description: 'Make your living room the ultimate cozy zone',
-      completed: false, tasks: [
-        makeTask('Vacuum or sweep all floors',        14, 28),
-        makeTask('Dust all surfaces & shelves',       10, 22),
-        makeTask('Organize cables & remotes',          7, 15),
-        makeTask('Fluff & arrange all cushions',       3,  8),
-        makeTask('Clear clutter from coffee table',    7, 15),
-        makeTask('Wipe down windows & mirrors',       14, 28),
-      ],
-    },
-    {
-      id: makeId('q'), title: 'Laundry Mastery', icon: '👕',
-      color: '#00BBF9', description: 'Conquer the laundry pile once and for all',
-      completed: false, tasks: [
-        makeTask('Sort clothes by color & fabric',    7, 15),
-        makeTask('Run wash cycles',                  10, 22),
-        makeTask('Dry, fold & hang everything',      18, 35),
-        makeTask('Put away all clean clothes',       14, 28),
-        makeTask('Clean the washing machine drum',   10, 22),
-      ],
-    },
-    {
-      id: makeId('q'), title: 'Bathroom Blitz', icon: '🚿',
-      color: '#F15BB5', description: 'Blast through bathroom chores like a champion',
-      completed: false, tasks: [
-        makeTask('Scrub & disinfect the toilet',     18, 35),
-        makeTask('Clean the sink & mirror',          10, 22),
-        makeTask('Scrub the shower or bathtub',      18, 35),
-        makeTask('Mop the bathroom floor',           10, 22),
-        makeTask('Restock toiletries & towels',       7, 15),
-        makeTask('Empty the bathroom trash',          3,  8),
-      ],
-    },
-  ];
+function isTaskFresh(task) {
+  if (!task.completed) return false;
+  const ts = task.completedAt ?? Date.now();
+  return (Date.now() - ts) / 86_400_000 < FRESHNESS_DAYS;
 }
 
-// ─── State ─────────────────────────────────────────────────────────────────────
-let state = {
-  player: { totalXP: 0, tasksCompleted: 0, questsCompleted: 0, streak: 0, lastActiveDate: null },
-  quests: [],
-  combo:  { count: 0, lastTaskTime: 0 },
-};
-
-let activeQuestId      = null;
-let selectedIcon       = '🏠';
-let selectedColor      = '#FF6B35';
-let comboTimerInterval = null;
-
-// ─── Persistence ───────────────────────────────────────────────────────────────
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw);
-      state = { ...state, ...saved };
-      if (!state.combo) state.combo = { count: 0, lastTaskTime: 0 };
-      migrateTasks();
-    } else {
-      state.quests = defaultQuests();
-    }
-  } catch {
-    state.quests = defaultQuests();
-  }
-  updateStreak();
+function questHealth(quest) {
+  if (!quest.tasks.length) return 100;
+  return Math.round(quest.tasks.filter(isTaskFresh).length / quest.tasks.length * 100);
 }
 
-/** Upgrade tasks from old flat-xp format to xpMin/xpMax + createdAt */
-function migrateTasks() {
-  for (const quest of state.quests) {
-    for (const task of quest.tasks) {
-      if (task.xp != null && task.xpMin == null) {
-        task.xpMin = Math.round(task.xp * 0.6);
-        task.xpMax = Math.round(task.xp * 1.4);
-        if (task.completed && task.xpAwarded == null) task.xpAwarded = task.xp;
-        delete task.xp;
-      }
-      if (!task.createdAt) task.createdAt = Date.now();
-      if (task.xpAwarded === undefined) task.xpAwarded = null;
-    }
-  }
+function homeHealth() {
+  if (!state.quests.length) return 100;
+  return Math.round(state.quests.reduce((s, q) => s + questHealth(q), 0) / state.quests.length);
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function getMood(h)      { return MOODS.find(m => h >= m.min)          ?? MOODS.at(-1); }
+function getRoomCond(h)  { return ROOM_CONDITIONS.find(c => h >= c.min) ?? ROOM_CONDITIONS.at(-1); }
+
+function pickMsg(mood) {
+  const pool = MESSAGES[mood.label] ?? MESSAGES['Cozy & Tidy'];
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ─── Streak ────────────────────────────────────────────────────────────────────
-function updateStreak() {
-  const today     = new Date().toDateString();
-  const yesterday = new Date(Date.now() - 86_400_000).toDateString();
-  if (state.player.lastActiveDate === today) return;
-  state.player.streak = (state.player.lastActiveDate === yesterday)
-    ? (state.player.streak || 0) + 1 : 1;
-  state.player.lastActiveDate = today;
-  saveState();
-}
-
-// ─── XP / Level ────────────────────────────────────────────────────────────────
-function levelThreshold(level) { return level * 150; }
-
-function calcLevel(xp) {
-  let level = 1;
-  while (xp >= levelThreshold(level)) { xp -= levelThreshold(level); level++; }
-  return level;
-}
-
-function calcXPInLevel(xp) {
-  let level = 1;
-  while (xp >= levelThreshold(level)) { xp -= levelThreshold(level); level++; }
-  return xp;
-}
-
-function levelTitle(level) {
-  return LEVEL_TITLES[Math.min(level - 1, LEVEL_TITLES.length - 1)];
-}
-
-// ─── Decay ─────────────────────────────────────────────────────────────────────
-function decayFactor(task) {
-  if (!task.createdAt) return 1;
-  const days = (Date.now() - task.createdAt) / 86_400_000;
-  return Math.max(0.1, Math.pow(DECAY_RATE, days));
-}
-
-function decayedRange(task) {
-  const f = decayFactor(task);
-  const min = Math.max(1, Math.round((task.xpMin || 5)  * f));
-  const max = Math.max(2, Math.round((task.xpMax || 10) * f));
-  const pct = Math.round((1 - f) * 100);
-  return { min, max, pct };
-}
-
-/** 'fresh' | 'mild' | 'moderate' | 'heavy' */
-function decayLevel(pct) {
-  if (pct <  5) return 'fresh';
-  if (pct < 20) return 'mild';
-  if (pct < 50) return 'moderate';
-  return 'heavy';
-}
-
-// ─── Combo ─────────────────────────────────────────────────────────────────────
-function getComboTier(count) {
-  for (const t of COMBO_TIERS) if (count >= t.min) return t;
-  return null;
-}
-
-function startComboTimer() {
-  clearInterval(comboTimerInterval);
-  comboTimerInterval = setInterval(() => {
-    const elapsed = Date.now() - state.combo.lastTaskTime;
-    if (elapsed >= COMBO_WINDOW) {
-      state.combo.count = 0;
-      state.combo.lastTaskTime = 0;
-      saveState();
-      clearInterval(comboTimerInterval);
-    }
-    updateComboHUD();
-  }, 500);
-}
-
-function updateComboHUD() {
-  const hud = document.getElementById('comboHUD');
-  if (!hud) return;
-
-  const tier      = getComboTier(state.combo.count);
-  const elapsed   = state.combo.lastTaskTime ? Date.now() - state.combo.lastTaskTime : COMBO_WINDOW;
-  const remaining = Math.max(0, COMBO_WINDOW - elapsed);
-  const pct       = (remaining / COMBO_WINDOW) * 100;
-
-  if (!tier) {
-    hud.classList.remove('active');
-    return;
-  }
-
-  hud.classList.add('active');
-  hud.style.setProperty('--cc', tier.color);
-
-  document.getElementById('hudFire').textContent  = tier.fire;
-  document.getElementById('hudMult').textContent  = tier.label;
-  document.getElementById('hudCount').textContent = `${state.combo.count} in a row!`;
-
-  const fill = document.getElementById('hudTimerFill');
-  fill.style.width      = pct + '%';
-  fill.style.background = pct < 25 ? '#EF233C' : tier.color;
-}
-
-// ─── Utilities ─────────────────────────────────────────────────────────────────
 function escHtml(s) {
   const d = document.createElement('div');
   d.appendChild(document.createTextNode(s));
@@ -244,77 +82,154 @@ function escHtml(s) {
 }
 
 function rgba(hex, a) {
-  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  const [r, g, b] = [hex.slice(1,3), hex.slice(3,5), hex.slice(5,7)].map(x => parseInt(x, 16));
   return `rgba(${r},${g},${b},${a})`;
 }
 
-function bump(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove('bump');
-  void el.offsetWidth;
-  el.classList.add('bump');
+// ─── Persistence ──────────────────────────────────────────────────────────────
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      state = { ...state, ...JSON.parse(raw) };
+      migrateTasks();
+    } else {
+      state.quests = defaultQuests();
+    }
+  } catch { state.quests = defaultQuests(); }
+  updateStreak();
 }
 
-// ─── XP Badge HTML ─────────────────────────────────────────────────────────────
-function xpBadgeHtml(task, questColor) {
-  // Already completed — show what was actually awarded
-  if (task.completed && task.xpAwarded != null) {
-    return `<div class="xp-badge awarded"
-      style="background:${rgba('#52B788',.15)};color:#52B788">
-      +${task.xpAwarded}&nbsp;XP
-    </div>`;
+function migrateTasks() {
+  for (const quest of state.quests) {
+    for (const task of quest.tasks) {
+      if (!task.createdAt)  task.createdAt = Date.now();
+      if (task.completed && !task.completedAt) task.completedAt = Date.now() - 43_200_000;
+      // Strip old XP fields from previous version
+      delete task.xp; delete task.xpMin; delete task.xpMax; delete task.xpAwarded;
+    }
+    // Remove old 'completed' quest-level flag used by XP version
+    delete quest.completed;
+  }
+  // Strip XP player fields
+  delete state.player.totalXP;
+  delete state.player.tasksCompleted;
+  delete state.player.questsCompleted;
+  delete state.combo;
+  if (state.player.tasksToday  == null) state.player.tasksToday  = 0;
+  if (state.player.totalDone   == null) state.player.totalDone   = 0;
+}
+
+function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+// ─── Streak ───────────────────────────────────────────────────────────────────
+function updateStreak() {
+  const today     = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86_400_000).toDateString();
+  if (state.player.lastActiveDate === today) return;
+  if (state.player.lastActiveDate !== yesterday) state.player.tasksToday = 0;
+  state.player.streak = (state.player.lastActiveDate === yesterday)
+    ? (state.player.streak ?? 0) + 1 : 0;
+  state.player.lastActiveDate = today;
+  saveState();
+}
+
+// ─── Default quests ───────────────────────────────────────────────────────────
+function defaultQuests() {
+  return [
+    {
+      id: makeId('q'), title: 'Kitchen Conquest', icon: '🍳',
+      color: '#FF6B35', description: 'Transform your kitchen into a sparkling sanctuary',
+      tasks: [
+        makeTask('Wipe down counters & stovetop'),
+        makeTask('Clean the microwave inside & out'),
+        makeTask('Scrub the sink until it shines'),
+        makeTask('Mop the kitchen floor'),
+        makeTask('Organize the pantry shelves'),
+        makeTask('Empty & clean the trash bin'),
+      ],
+    },
+    {
+      id: makeId('q'), title: 'Living Room Legend', icon: '🛋️',
+      color: '#9B5DE5', description: 'Make your living room the ultimate cozy zone',
+      tasks: [
+        makeTask('Vacuum or sweep all floors'),
+        makeTask('Dust all surfaces & shelves'),
+        makeTask('Organize cables & remotes'),
+        makeTask('Fluff & arrange all cushions'),
+        makeTask('Clear clutter from coffee table'),
+        makeTask('Wipe down windows & mirrors'),
+      ],
+    },
+    {
+      id: makeId('q'), title: 'Laundry Mastery', icon: '👕',
+      color: '#00BBF9', description: 'Conquer the laundry pile once and for all',
+      tasks: [
+        makeTask('Sort clothes by color & fabric'),
+        makeTask('Run wash cycles'),
+        makeTask('Dry, fold & hang everything'),
+        makeTask('Put away all clean clothes'),
+        makeTask('Clean the washing machine drum'),
+      ],
+    },
+    {
+      id: makeId('q'), title: 'Bathroom Blitz', icon: '🚿',
+      color: '#F15BB5', description: 'Blast through bathroom chores like a champion',
+      tasks: [
+        makeTask('Scrub & disinfect the toilet'),
+        makeTask('Clean the sink & mirror'),
+        makeTask('Scrub the shower or bathtub'),
+        makeTask('Mop the bathroom floor'),
+        makeTask('Restock toiletries & towels'),
+        makeTask('Empty the bathroom trash'),
+      ],
+    },
+  ];
+}
+
+// ─── Render: pet ──────────────────────────────────────────────────────────────
+function renderPet() {
+  const health  = homeHealth();
+  const mood    = getMood(health);
+  const section = document.getElementById('petSection');
+
+  document.getElementById('petHouse').textContent      = mood.emoji;
+  document.getElementById('petMoodLabel').textContent  = mood.label;
+  document.getElementById('petHealthFill').style.width = health + '%';
+  document.getElementById('petHealthFill').style.background = mood.barColor;
+  document.getElementById('petHealthPct').textContent  = health + '%';
+
+  // Refresh message only on mood change
+  if (section.dataset.mood !== mood.label) {
+    document.getElementById('petMessage').textContent = pickMsg(mood);
+    section.dataset.mood = mood.label;
   }
 
-  // Pending — show mystery range with decay coloring
-  const { min, max, pct } = decayedRange(task);
-  const level = decayLevel(pct);
-
-  let icon  = '🎲';
-  let color = questColor;
-  if (level === 'moderate') { icon = '⚠️'; color = '#CC8800'; }
-  if (level === 'heavy')    { icon = '⚠️'; color = '#EF233C'; }
-
-  const hint = pct >= 5
-    ? `<span class="decay-pct"> ▾${pct}%</span>`
-    : '';
-
-  const title = pct > 0
-    ? `Decayed ${pct}% — originally ${task.xpMin}–${task.xpMax} XP`
-    : 'Mystery reward! Complete to find out.';
-
-  return `<div class="xp-badge mystery ${level}"
-    style="background:${rgba(color,.12)};color:${color}"
-    title="${title}">
-    ${icon}&nbsp;${min}–${max}${hint}
-  </div>`;
+  // Crisis shake
+  if (mood.label === 'In Crisis!') {
+    const el = document.getElementById('petHouse');
+    el.classList.remove('shake');
+    void el.offsetWidth;
+    el.classList.add('shake');
+  }
 }
 
-// ─── Render ────────────────────────────────────────────────────────────────────
-function renderAll() {
-  renderHeader();
-  renderStats();
-  renderGrid();
-  updateComboHUD();
+function bouncePet() {
+  const el = document.getElementById('petHouse');
+  el.classList.remove('bounce');
+  void el.offsetWidth;
+  el.classList.add('bounce');
 }
 
-function renderHeader() {
-  const level = calcLevel(state.player.totalXP);
-  const xpIn  = calcXPInLevel(state.player.totalXP);
-  const thresh = levelThreshold(level);
-  document.getElementById('playerLevel').textContent = level;
-  document.getElementById('playerTitle').textContent = levelTitle(level);
-  document.getElementById('xpFill').style.width      = Math.round(xpIn / thresh * 100) + '%';
-  document.getElementById('xpNums').textContent      = `${xpIn} / ${thresh} XP`;
-}
-
+// ─── Render: stats ────────────────────────────────────────────────────────────
 function renderStats() {
-  document.getElementById('statXP').textContent     = state.player.totalXP.toLocaleString();
-  document.getElementById('statTasks').textContent  = state.player.tasksCompleted;
-  document.getElementById('statQuests').textContent = state.player.questsCompleted;
-  document.getElementById('statStreak').textContent = state.player.streak;
+  const sparkling = state.quests.filter(q => questHealth(q) >= 85).length;
+  document.getElementById('statToday').textContent     = state.player.tasksToday ?? 0;
+  document.getElementById('statStreak').textContent    = state.player.streak     ?? 0;
+  document.getElementById('statSparkling').textContent = sparkling;
 }
 
+// ─── Render: quest grid ───────────────────────────────────────────────────────
 function renderGrid() {
   const grid  = document.getElementById('questsGrid');
   const empty = document.getElementById('emptyState');
@@ -328,56 +243,44 @@ function renderGrid() {
   empty.classList.remove('visible');
   grid.innerHTML = state.quests.map(questCardHtml).join('');
   state.quests.forEach(q => {
-    const el = document.getElementById('card_' + q.id);
-    if (el) el.addEventListener('click', () => openTaskModal(q.id));
+    document.getElementById('card_' + q.id)?.addEventListener('click', () => openTaskModal(q.id));
   });
 }
 
 function questCardHtml(quest) {
-  const total    = quest.tasks.length;
-  const done     = quest.tasks.filter(t => t.completed).length;
-  const pct      = total ? Math.round(done / total * 100) : 0;
-  const earnedXP = quest.tasks.filter(t => t.completed && t.xpAwarded != null)
-                              .reduce((s, t) => s + t.xpAwarded, 0);
-
-  // Potential XP = midpoint of each pending task's decayed range
-  const potXP = quest.tasks.filter(t => !t.completed).reduce((s, t) => {
-    const { min, max } = decayedRange(t);
-    return s + Math.round((min + max) / 2);
-  }, 0);
-
-  const isComplete   = total > 0 && done === total;
-  const decayingTasks = quest.tasks.filter(t => !t.completed && decayedRange(t).pct >= 20).length;
+  const health = questHealth(quest);
+  const total  = quest.tasks.length;
+  const fresh  = quest.tasks.filter(isTaskFresh).length;
+  const pct    = total ? Math.round(fresh / total * 100) : 0;
+  const cond   = getRoomCond(health);
+  const stale  = quest.tasks.filter(t => t.completed && !isTaskFresh(t)).length;
 
   return `
-    <div class="quest-card ${isComplete ? 'completed' : ''}" id="card_${quest.id}">
-      ${isComplete ? '<div class="complete-badge">🏆 Complete</div>' : ''}
-      ${decayingTasks > 0 && !isComplete
-        ? `<div class="decay-card-badge">⚠️ ${decayingTasks} task${decayingTasks > 1 ? 's' : ''} losing XP</div>`
-        : ''}
+    <div class="quest-card" id="card_${quest.id}">
+      <div class="room-stripe" style="background:${cond.color}"></div>
       <div class="quest-card-header">
-        <div class="quest-icon-wrap" style="background:${rgba(quest.color,.13)}">${quest.icon}</div>
+        <div class="quest-icon-wrap" style="background:${rgba(quest.color, .12)}">${quest.icon}</div>
         <div class="quest-meta">
           <div class="quest-name">${escHtml(quest.title)}</div>
-          <div class="quest-desc">${escHtml(quest.description || 'Click to view tasks')}</div>
+          <div class="room-condition-label" style="color:${cond.color}">${cond.label}</div>
         </div>
       </div>
       <div class="quest-card-body">
         <div class="quest-progress-track">
-          <div class="quest-progress-fill" style="background:${quest.color};width:${pct}%"></div>
+          <div class="quest-progress-fill" style="background:${cond.color};width:${pct}%"></div>
         </div>
         <div class="quest-progress-labels">
-          <span>${done} / ${total} tasks</span>
-          <span>${earnedXP > 0 ? `+${earnedXP} XP earned` : `~${potXP} XP available`}</span>
+          <span>${fresh} / ${total} tasks fresh</span>
+          ${stale > 0 ? `<span class="stale-count">↻ ${stale} need${stale > 1 ? '' : 's'} redo</span>` : `<span>${health}% healthy</span>`}
         </div>
-        <button class="quest-cta" style="background:${isComplete ? '#52B788' : quest.color}">
-          ${isComplete ? '🏆 Completed!' : 'View Tasks →'}
+        <button class="quest-cta" style="background:${quest.color}">
+          Care for this room →
         </button>
       </div>
     </div>`;
 }
 
-// ─── Task Modal ────────────────────────────────────────────────────────────────
+// ─── Task modal ───────────────────────────────────────────────────────────────
 function openTaskModal(questId) {
   activeQuestId = questId;
   const quest = state.quests.find(q => q.id === questId);
@@ -403,140 +306,115 @@ function closeTaskModal() {
 }
 
 function refreshProgress(quest) {
-  const done     = quest.tasks.filter(t => t.completed).length;
-  const total    = quest.tasks.length;
-  const earned   = quest.tasks.filter(t => t.completed && t.xpAwarded != null)
-                              .reduce((s, t) => s + t.xpAwarded, 0);
-  document.getElementById('modalProgressFill').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
-  document.getElementById('modalTaskCount').textContent    = `${done} of ${total} tasks`;
-  document.getElementById('modalXPEarned').textContent     = `+${earned} XP earned`;
+  const total  = quest.tasks.length;
+  const fresh  = quest.tasks.filter(isTaskFresh).length;
+  const health = questHealth(quest);
+  const cond   = getRoomCond(health);
+  const pct    = total ? Math.round(fresh / total * 100) : 0;
+
+  document.getElementById('modalProgressFill').style.width = pct + '%';
+  document.getElementById('modalTaskCount').textContent    = `${fresh} of ${total} tasks fresh`;
+  document.getElementById('modalXPEarned').textContent     = cond.label;
 }
 
 function renderTaskList(quest) {
   const list = document.getElementById('taskList');
   if (!quest.tasks.length) {
-    list.innerHTML = `<div style="text-align:center;color:#9A9ABF;padding:20px 0;font-weight:600;font-size:.9rem">
+    list.innerHTML = `<div style="text-align:center;color:#9A9ABF;padding:20px 0;font-weight:600">
       No tasks yet — add one below! 👇</div>`;
     return;
   }
-  list.innerHTML = quest.tasks.map((task, i) => `
-    <div class="task-item ${task.completed ? 'checked' : ''}"
-         id="task_${task.id}"
-         style="animation-delay:${i * 35}ms"
-         onclick="toggleTask('${task.id}')">
-      <div class="task-checkbox">${task.completed ? '✓' : ''}</div>
-      <div class="task-text">${escHtml(task.text)}</div>
-      ${xpBadgeHtml(task, quest.color)}
-    </div>`).join('');
+  list.innerHTML = quest.tasks.map((t, i) => taskItemHtml(t, i, quest.color)).join('');
 }
 
-// ─── Core: toggle task ─────────────────────────────────────────────────────────
+function taskItemHtml(task, i, questColor) {
+  const fresh = isTaskFresh(task);
+  const stale = task.completed && !fresh;
+
+  let cls          = '';
+  let checkStyle   = '';
+  let checkContent = '';
+  let badge        = '';
+
+  if (fresh) {
+    cls          = 'checked';
+    checkContent = '✓';
+    checkStyle   = `background:${questColor};border-color:${questColor}`;
+  } else if (stale) {
+    cls          = 'stale';
+    checkContent = '↻';
+    checkStyle   = 'border-color:#CC8800;color:#CC8800;background:rgba(204,136,0,.1)';
+    badge        = '<div class="stale-badge">↻ Needs care</div>';
+  }
+
+  return `
+    <div class="task-item ${cls}" id="task_${task.id}"
+         style="animation-delay:${i * 35}ms"
+         onclick="toggleTask('${task.id}')">
+      <div class="task-checkbox" style="${checkStyle}">${checkContent}</div>
+      <div class="task-text">${escHtml(task.text)}</div>
+      ${badge}
+    </div>`;
+}
+
+// ─── Core: toggle task ────────────────────────────────────────────────────────
 function toggleTask(taskId) {
   const quest = state.quests.find(q => q.id === activeQuestId);
-  if (!quest) return;
-  const task = quest.tasks.find(t => t.id === taskId);
+  const task  = quest?.tasks.find(t => t.id === taskId);
   if (!task) return;
 
-  const prevLevel = calcLevel(state.player.totalXP);
-  task.completed = !task.completed;
+  const wasFresh = isTaskFresh(task);
 
-  if (task.completed) {
-    // ── 1. Variable reward ──────────────────────────────────
-    const { min, max } = decayedRange(task);
-    const rawXP = min + Math.floor(Math.random() * (max - min + 1));
+  if (!task.completed || !wasFresh) {
+    // Care / re-fresh
+    task.completed   = true;
+    task.completedAt = Date.now();
+    state.player.tasksToday = (state.player.tasksToday ?? 0) + 1;
+    state.player.totalDone  = (state.player.totalDone  ?? 0) + 1;
+    state.player.lastActiveDate = new Date().toDateString();
 
-    // ── 2. Combo multiplier ─────────────────────────────────
-    const now = Date.now();
-    state.combo.count = (state.combo.lastTaskTime && now - state.combo.lastTaskTime < COMBO_WINDOW)
-      ? state.combo.count + 1 : 1;
-    state.combo.lastTaskTime = now;
-
-    const tier   = getComboTier(state.combo.count);
-    const mult   = tier ? tier.mult : 1;
-    const finalXP = Math.round(rawXP * mult);
-
-    task.xpAwarded = finalXP;
-    state.player.totalXP        += finalXP;
-    state.player.tasksCompleted += 1;
-    state.player.lastActiveDate  = new Date().toDateString();
-    saveState();
-
-    // ── DOM animation ───────────────────────────────────────
+    // Animate the item
     const el  = document.getElementById('task_' + taskId);
     const box = el?.querySelector('.task-checkbox');
     if (el && box) {
+      el.classList.remove('stale');
       el.classList.add('checked');
-      box.textContent = '✓';
-
-      // Phase 1: rolling suspense
-      const badge = el.querySelector('.xp-badge');
-      if (badge) {
-        badge.className = 'xp-badge rolling';
-        badge.style = '';
-        badge.innerHTML = '🎲&nbsp;…';
-
-        // Phase 2: reveal after 650ms
-        setTimeout(() => {
-          if (!document.getElementById('task_' + taskId)) return;
-          badge.className = 'xp-badge awarded reveal-pop';
-          badge.style.background = rgba('#52B788', .15);
-          badge.style.color      = '#52B788';
-          badge.innerHTML = `+${finalXP}&nbsp;XP${tier ? ' ' + tier.fire : ''}`;
-          showXPFloat(el, finalXP, tier);
-        }, 650);
-      }
+      box.textContent  = '✓';
+      box.style.cssText = `background:${quest.color};border-color:${quest.color}`;
+      el.querySelector('.stale-badge')?.remove();
+      showCareFloat(el);
     }
 
-    // ── Level up? ───────────────────────────────────────────
-    const newLevel = calcLevel(state.player.totalXP);
-    if (newLevel > prevLevel) setTimeout(() => showLevelUp(newLevel), 1300);
+    bouncePet();
 
-    // ── Quest complete? ─────────────────────────────────────
-    if (!quest.completed && quest.tasks.every(t => t.completed)) {
-      quest.completed = true;
-      state.player.questsCompleted += 1;
-      saveState();
-      setTimeout(() => questComplete(quest), 350);
+    // All tasks fresh → sparkling!
+    if (quest.tasks.every(isTaskFresh)) {
+      setTimeout(() => questSparkling(quest), 350);
     }
-
-    updateComboHUD();
-    startComboTimer();
 
   } else {
-    // ── Uncomplete ──────────────────────────────────────────
-    const wasXP = task.xpAwarded || 0;
-    task.xpAwarded = null;
-    state.player.totalXP        = Math.max(0, state.player.totalXP - wasXP);
-    state.player.tasksCompleted = Math.max(0, state.player.tasksCompleted - 1);
-    if (quest.completed) {
-      quest.completed = false;
-      state.player.questsCompleted = Math.max(0, state.player.questsCompleted - 1);
-    }
-    // Uncompleting breaks the combo
-    state.combo.count = Math.max(0, state.combo.count - 1);
-    saveState();
+    // Un-care
+    task.completed   = false;
+    task.completedAt = null;
+    state.player.tasksToday = Math.max(0, (state.player.tasksToday ?? 0) - 1);
 
     const el  = document.getElementById('task_' + taskId);
     const box = el?.querySelector('.task-checkbox');
     if (el && box) {
       el.classList.remove('checked');
-      box.textContent = '';
-      // Restore mystery badge
-      const badge = el.querySelector('.xp-badge');
-      if (badge) badge.outerHTML = xpBadgeHtml(task, quest.color);
+      box.textContent  = '';
+      box.style.cssText = '';
     }
-    updateComboHUD();
   }
 
+  saveState();
   refreshProgress(quest);
-  renderHeader();
+  renderPet();
   renderStats();
-  bump('statXP');
-  bump('statTasks');
   renderGrid();
 }
 
-// ─── Add task ──────────────────────────────────────────────────────────────────
+// ─── Add task ─────────────────────────────────────────────────────────────────
 function toggleAddTaskForm() {
   const form   = document.getElementById('addTaskForm');
   const btn    = document.getElementById('btnAddTask');
@@ -568,16 +446,9 @@ function confirmAddTask() {
     setTimeout(() => input.classList.remove('error'), 800);
     return;
   }
-  // Parse "min-max" from select value, e.g. "7-15"
-  const [xpMin, xpMax] = document.getElementById('newTaskXP').value.split('-').map(Number);
   const quest = state.quests.find(q => q.id === activeQuestId);
   if (!quest) return;
-
-  quest.tasks.push({ id: makeId('t'), text, xpMin, xpMax, createdAt: Date.now(), completed: false, xpAwarded: null });
-  if (quest.completed) {
-    quest.completed = false;
-    state.player.questsCompleted = Math.max(0, state.player.questsCompleted - 1);
-  }
+  quest.tasks.push(makeTask(text));
   saveState();
   cancelAddTask();
   renderTaskList(quest);
@@ -585,7 +456,7 @@ function confirmAddTask() {
   renderGrid();
 }
 
-// ─── New Quest Modal ───────────────────────────────────────────────────────────
+// ─── New quest modal ──────────────────────────────────────────────────────────
 function openNewQuestModal() {
   selectedIcon = '🏠'; selectedColor = '#FF6B35';
   document.getElementById('newQuestName').value = '';
@@ -615,8 +486,8 @@ function saveNewQuest() {
   }
   const quest = {
     id: makeId('q'), title: name,
-    description: document.getElementById('newQuestDesc').value.trim() || 'Complete all tasks to win!',
-    icon: selectedIcon, color: selectedColor, completed: false, tasks: [],
+    description: document.getElementById('newQuestDesc').value.trim() || 'Complete all tasks to care for this room!',
+    icon: selectedIcon, color: selectedColor, tasks: [],
   };
   state.quests.push(quest);
   saveState();
@@ -625,17 +496,14 @@ function saveNewQuest() {
   setTimeout(() => openTaskModal(quest.id), 360);
 }
 
-// ─── Celebrations ──────────────────────────────────────────────────────────────
-function questComplete(quest) {
-  const colors = [quest.color, '#FFB627', '#FF6B35', '#52B788', '#fff'];
-  const end    = Date.now() + 2800;
-  (function frame() {
-    confetti({ particleCount: 5, angle: 60,  spread: 58, origin: { x: 0 }, colors });
-    confetti({ particleCount: 5, angle: 120, spread: 58, origin: { x: 1 }, colors });
-    if (Date.now() < end) requestAnimationFrame(frame);
-  })();
-  showToast(`🏆 Quest Complete: ${quest.title}!`, quest.color);
-  bump('statQuests');
+// ─── Celebrations ─────────────────────────────────────────────────────────────
+function questSparkling(quest) {
+  confetti({
+    particleCount: 90, spread: 70, origin: { y: 0.55 },
+    colors: [quest.color, '#52B788', '#FFB627', '#fff'],
+    shapes: ['star', 'circle'],
+  });
+  showToast(`✨ ${quest.title} is Sparkling!`, '#2D9C62');
   renderGrid();
   refreshProgress(quest);
 }
@@ -651,46 +519,30 @@ function showToast(msg, color) {
     el.style.opacity    = '0';
     el.style.transform  = 'translateX(-50%) translateY(50px)';
     setTimeout(() => el.remove(), 420);
-  }, 3400);
+  }, 3200);
 }
 
-function showXPFloat(element, xp, tier) {
-  const rect  = element.getBoundingClientRect();
-  const el    = document.createElement('div');
-  el.className   = 'xp-float';
-  const bonus    = tier ? ` ${tier.fire}${tier.label}` : '';
-  el.textContent = `+${xp} XP${bonus}`;
-  el.style.left  = (rect.left + rect.width / 2 - 30) + 'px';
-  el.style.top   = (rect.top - 2) + 'px';
-  document.getElementById('xpFloats').appendChild(el);
-  setTimeout(() => el.remove(), 1200);
+function showCareFloat(element) {
+  const rect = element.getBoundingClientRect();
+  for (let i = 0; i < 3; i++) {
+    setTimeout(() => {
+      const el       = document.createElement('div');
+      el.className   = 'care-float';
+      el.textContent = CARE_EMOJIS[Math.floor(Math.random() * CARE_EMOJIS.length)];
+      el.style.left  = (rect.left + 16 + Math.random() * Math.max(0, rect.width - 32)) + 'px';
+      el.style.top   = rect.top + 'px';
+      document.getElementById('careFloats').appendChild(el);
+      setTimeout(() => el.remove(), 1050);
+    }, i * 110);
+  }
 }
 
-function showLevelUp(level) {
-  document.getElementById('levelUpNum').textContent       = level;
-  document.getElementById('levelUpTitleText').textContent = levelTitle(level);
-  document.getElementById('levelUpOverlay').classList.add('open');
-  confetti({ particleCount: 120, spread: 80, origin: { y: .55 },
-    colors: ['#FF6B35','#FFB627','#9B5DE5','#52B788','#F15BB5'] });
-}
-
-function closeLevelUp() {
-  document.getElementById('levelUpOverlay').classList.remove('open');
-}
-
-// ─── Event wiring ──────────────────────────────────────────────────────────────
+// ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   loadState();
-  renderAll();
-
-  // Resume combo timer if still within window after a reload
-  if (state.combo.count >= 2 && state.combo.lastTaskTime) {
-    if (Date.now() - state.combo.lastTaskTime < COMBO_WINDOW) {
-      startComboTimer();
-    } else {
-      state.combo.count = 0; state.combo.lastTaskTime = 0; saveState();
-    }
-  }
+  renderPet();
+  renderStats();
+  renderGrid();
 
   document.getElementById('btnNewQuest').addEventListener('click', openNewQuestModal);
 
@@ -729,6 +581,5 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key !== 'Escape') return;
     if (document.getElementById('taskOverlay').classList.contains('open'))     closeTaskModal();
     if (document.getElementById('newQuestOverlay').classList.contains('open')) closeNewQuestModal();
-    if (document.getElementById('levelUpOverlay').classList.contains('open'))  closeLevelUp();
   });
 });
